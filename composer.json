@@ -64,8 +64,8 @@
   },
   "scripts": {
     "ci": [
-      "@ecs",
       "@rector",
+      "@ecs",
       "@phpstan",
       "@test"
     ],
@@ -73,10 +73,11 @@
       "@ci",
       "@infection"
     ],
+    "rector": "vendor/bin/rector",
     "ecs": "vendor/bin/ecs check --fix",
     "phpstan": "vendor/bin/phpstan analyse",
-    "rector": "vendor/bin/rector",
     "test": "vendor/bin/tester tests -s -C",
+    "test-coverage": "vendor/bin/tester -s --coverage tests/reports/coverage.xml --coverage-src src -o junit:tests/reports/junit.xml tests",
     "test-htmlcoverage": "vendor/bin/tester -s -C --coverage tests/reports/coverage.html --coverage-src src tests",
     "infection": "vendor/bin/infection --threads=max --with-uncovered --show-mutations=0"
   },

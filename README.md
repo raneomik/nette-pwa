@@ -1,6 +1,13 @@
 Nette PWA Extension
 ===================
 
+[![.github/workflows/ci.yml](https://github.com/raneomik/nette-pwa/actions/workflows/ci.yml/badge.svg?style=flat-square)](https://github.com/raneomik/nette-mercure/actions/workflows/ci.yml)
+[![.github/workflows/coverage.yml](https://github.com/raneomik/nette-pwa/actions/workflows/coverage.yml/badge.svg?style=flat-square)](https://github.com/raneomik/nette-mercure/actions/workflows/coverage.yml)
+[![codecov](https://codecov.io/gh/raneomik/nette-pwa/graph/badge.svg?token=Bc23JJTFL0&style=flat-square)](https://codecov.io/gh/raneomik/nette-mercure)
+[![Mutation Testing](https://github.com/raneomik/nette-pwa/actions/workflows/mutation-test.yml/badge.svg)](https://github.com/raneomik/nette-mercure/actions/workflows/mutation-test.yml)
+[![Mutation testing badge](https://img.shields.io/endpoint?style=flat&url=https%3A%2F%2Fbadge-api.stryker-mutator.io%2Fgithub.com%2Franeomik%2Fnette-pwa%2Fmain)](https://dashboard.stryker-mutator.io/reports/github.com/raneomik/nette-pwa/main)
+
+
 *Work In Progress*
 
 🔔 Nette extension for Progressive Web Apps: the web app manifest written in NEON, a service worker,
