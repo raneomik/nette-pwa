@@ -1,0 +1,70 @@
+name: Test Coverage
+
+on:
+    push:
+
+permissions:
+    contents: read
+    actions: read
+    checks: write
+
+env:
+    tools: composer:v2
+    cache-version: 1
+    CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+jobs:
+    coverage:
+        runs-on: ubuntu-latest
+
+        strategy:
+            matrix:
+                operating-system: [ ubuntu-latest ]
+                php-version: [ 8.3, 8.4, 8.5 ]
+
+        name: Test Coverage - PHP ${{ matrix.php-version }}
+
+        steps:
+            -   name: Checkout
+                uses: actions/checkout@v7
+
+            -   name: Install PHP
+                uses: shivammathur/setup-php@v2
+                with:
+                    php-version: ${{ matrix.php-version }}
+                    coverage: pcov
+                    tools: ${{ env.tools }}
+
+            -   name: Setup problem matchers for PHP
+                run: 'echo ::add-matcher::${{ runner.tool_cache }}/php.json'
+
+            -   name: Install dependencies
+                uses: ramsey/composer-install@4.0.0
+                with:
+                    composer-options: --prefer-dist --optimize-autoloader
+
+            -   name: Run Tests with coverage
+                run: composer test-coverage
+
+            -   name: Test Report
+                uses: dorny/test-reporter@v3
+                with:
+                    name: TESTER Tests
+                    path: tests/reports/junit.xml
+                    reporter: tester-junit
+
+            -   name: Upload tests results report to Codecov
+                uses: codecov/codecov-action@v7
+                if: ${{ 8.5 == matrix.php-version }}
+                with:
+                    files: tests/reports/junit.xml
+                    fail_ci_if_error: true
+                    report_type: test_results
+
+            -   name: Upload tests coverage report to Codecov
+                uses: codecov/codecov-action@v7
+                if: ${{ 8.5 == matrix.php-version }}
+                with:
+                    files: tests/reports/coverage.xml
+                    fail_ci_if_error: true
+                    report_type: coverage

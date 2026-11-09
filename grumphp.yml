@@ -1,0 +1,7 @@
+grumphp:
+  tasks:
+    rector:
+    phpstan:
+      configuration: ./phpstan.neon
+    tester:
+    ecs:

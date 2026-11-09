@@ -1,0 +1,40 @@
+name: Mutation Testing
+
+on:
+  push:
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+
+env:
+  tools: composer:v2
+  cache-version: 1
+
+jobs:
+  mutation-testing:
+    runs-on: ubuntu-latest
+
+    name: Mutation testing with PHP 8.5 (pcov)
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.5
+          coverage: pcov
+          tools: ${{ env.tools }}
+
+      - name: Install dependencies
+        uses: ramsey/composer-install@4.0.0
+        with:
+          composer-options: --prefer-dist
+
+      - name: Run Infection
+        run: composer infection -- --logger-github
+        env:
+          STRYKER_DASHBOARD_API_KEY: ${{ secrets.STRYKER_DASHBOARD_API_KEY }}

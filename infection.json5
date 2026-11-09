@@ -1,0 +1,19 @@
+{
+    "$schema": "vendor/infection/infection/resources/schema.json",
+    "testFramework": "tester",
+    "source": {
+        "directories": [
+            "src"
+        ],
+    },
+    "logs": {
+        "text": "tests/reports/infection.log",
+        "html": "tests/reports/infection.html",
+        "summary": "tests/reports/infection-summary.log",
+    },
+    "mutators": {
+        "@default": true
+    },
+    "threads": "max",
+    "timeout": 60,
+}

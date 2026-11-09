@@ -1,0 +1,65 @@
+name: Continuous Integration
+
+on:
+  push:
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+
+env:
+  tools: composer:v2
+  cache-version: 1
+
+jobs:
+  ci:
+    name: CI
+    
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+        php-version: [ 8.3, 8.4, 8.5 ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          coverage: xdebug # xdebug_get_headers(): the only way to read the sent cookie header in CLI
+          tools: ${{ env.tools }}
+
+      - name: Setup problem matchers for PHP
+        run: 'echo ::add-matcher::${{ runner.tool_cache }}/php.json'
+
+      - name: Install dependencies
+        uses: ramsey/composer-install@4.0.0
+        with:
+          composer-options: --prefer-dist --optimize-autoloader
+
+      - name: Validate Composer dependencies
+        run: composer validate --strict
+
+      - name: Composer dependencies audit
+        run: composer audit
+
+      - name: Check PSR-4 autoloading
+        run: composer dumpautoload --strict-psr -a -o --dev
+
+      - name: Rector
+        run: composer rector -- --output-format=github --no-progress-bar
+
+      - name: PHPStan
+        run: composer phpstan -- --error-format=github --no-progress
+
+      - name: Easy Coding Standards
+        run: composer ecs -- --no-progress-bar
+
+      - name: Tests
+        run: composer test
