@@ -66,7 +66,9 @@ final class FakePushService implements ClientInterface, WebPushFactory
         $key = false === $pair ? false : openssl_pkey_get_details($pair);
         \assert(\is_array($key));
         $b64 = static fn (string $bytes): string => rtrim(strtr(base64_encode($bytes), '+/', '-_'), '=');
+        // openssl drops leading zero bytes: pad each coordinate back to 32 bytes
+        $coord = static fn (string $bytes): string => str_pad($bytes, 32, "\0", \STR_PAD_LEFT);
 
-        return new Subscription($endpoint, $b64("\x04" . $key['ec']['x'] . $key['ec']['y']), $b64(random_bytes(16)));
+        return new Subscription($endpoint, $b64("\x04" . $coord($key['ec']['x']) . $coord($key['ec']['y'])), $b64(random_bytes(16)));
     }
 }

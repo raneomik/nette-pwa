@@ -10,6 +10,9 @@
         "text": "tests/reports/infection.log",
         "html": "tests/reports/infection.html",
         "summary": "tests/reports/infection-summary.log",
+        "stryker": {
+            "report": "main"
+        }
     },
     "mutators": {
         "@default": true

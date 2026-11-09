@@ -52,14 +52,25 @@ final class SubscribeActionTest extends TestCase
         Assert::contains($long, $topics); // 255 characters
     }
 
+    public function testAcceptsTopicAsString(): void
+    {
+        $this->action('POST', $this->body('room/a'))();
+
+        Assert::same(['room/a'], $topics = $this->storage->rows[self::Endpoint][1]);
+    }
+
     /**
      * @return iterable<string, array{string, ?string, bool, int, string}>
      */
     public function provideRefusals(): iterable
     {
         $valid = $this->body(['room/a']);
+
         yield 'GET' => ['GET', $valid, true, 403, 'Forbidden'];
         yield 'no X-Requested-With' => ['POST', $valid, false, 403, 'Forbidden'];
+
+        yield 'missing data' => ['POST', '{}', true, 400, "Missing input at 'subscription'."];
+        yield 'missing topics' => ['POST', $this->body(false), true, 403, "Missing input at 'topics'."];
         yield 'no topic allowed' => ['POST', $this->body(['player/2']), true, 403, 'No topic you may subscribe to.'];
         yield 'invalid JSON' => ['POST', '{nope', true, 400, 'Invalid JSON'];
         yield 'empty body' => ['POST', null, true, 400, 'Invalid JSON'];
@@ -105,6 +116,12 @@ final class SubscribeActionTest extends TestCase
         string $p256dh = 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM',
         string $auth = 'tBHItJI5svbpez7KI4CCXg',
     ): string {
+        $topics = false !== $topics
+            ? [
+                'topics' => $topics,
+            ]
+            : [];
+
         return Json::encode([
             'subscription' => [
                 'endpoint' => $endpoint,
@@ -113,7 +130,7 @@ final class SubscribeActionTest extends TestCase
                     'auth' => $auth,
                 ],
             ],
-            'topics' => $topics,
+            ...$topics,
         ]);
     }
 
