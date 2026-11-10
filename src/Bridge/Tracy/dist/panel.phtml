@@ -1,0 +1,155 @@
+<?php declare(strict_types=1);
+
+use Raneomik\NettePWA\Manifest\Value\Issue;
+use Raneomik\NettePWA\Push\Debug\SentPush;
+use Tracy\Helpers;
+
+/**
+ * @var array{manifest: list<Issue>, serviceWorker: list<Issue>, push: list<Issue>, sent: list<SentPush>} $data
+ * @var string $baseUrl
+ * @var string $serviceWorker
+ * @var bool $customServiceWorker
+ * @var ?array{publicKey: string, subject: string, pushServices: list<string>, subscribePath: string} $push
+ * @var string $logo
+ */
+
+$e = static fn (mixed $value): string => Helpers::escapeHtml((string) $value);
+$icons = [Issue::Error => '✖', Issue::Warning => '▲', Issue::Tip => '●'];
+$issues = static function (array $list, string $ok) use ($e, $icons): void {
+	if ([] === $list) {
+		echo '<p class="pwa-issue pwa-ok"><b aria-hidden="true">✔</b><span>', $e($ok), '</span></p>';
+		return;
+	}
+	$rank = [Issue::Error => 0, Issue::Warning => 1, Issue::Tip => 2];
+	usort($list, static fn (Issue $a, Issue $b): int => $rank[$a->severity] <=> $rank[$b->severity]); // stable
+	echo '<ul class="pwa-issues">';
+	foreach ($list as $issue) {
+		echo '<li class="pwa-issue pwa-', $e($issue->severity), '"><b title="', $e($issue->severity), '">', $icons[$issue->severity], '</b><span>', $e($issue->message), '</span></li>';
+	}
+	echo '</ul>';
+};
+?>
+<style class="tracy-debug">
+	/* text and rules derive from the panel's text color: Tracy's light theme and dark themes alike */
+	#tracy-debug .pwa {
+		--pwa-muted: color-mix(in srgb, currentColor 62%, transparent);
+		--pwa-rule: color-mix(in srgb, currentColor 14%, transparent);
+		--pwa-accent: color-mix(in srgb, #5A0FC8 70%, currentColor);
+		--pwa-error: #e0352b;
+		--pwa-warning: #c77d0a;
+		--pwa-ok: #2f9e5c;
+		min-width: 480px;
+		max-width: 640px;
+	}
+	#tracy-debug .pwa :is(p, ul, dl, dd, h2) { margin: 0; padding: 0; }
+	#tracy-debug .pwa-section {
+		display: grid;
+		grid-template-columns: 8.5em 1fr;
+		column-gap: 18px;
+		padding: 14px 0;
+		border-top: 1px solid var(--pwa-rule);
+	}
+	#tracy-debug .pwa-section:first-child { border-top: 0; padding-top: 6px; }
+	#tracy-debug .pwa-section > header h2 { font-size: 13px; line-height: 1.4; }
+	#tracy-debug .pwa-section > header a { display: inline-block; margin-top: 2px; color: var(--pwa-muted); font-size: 11px; }
+	#tracy-debug .pwa-section > header a:hover,
+	#tracy-debug .pwa-section > header a:focus { color: white; }
+	#tracy-debug .pwa-body { display: grid; gap: 10px; align-content: start; min-width: 0; }
+	#tracy-debug .pwa-muted { color: var(--pwa-muted); }
+
+	#tracy-debug .pwa-issues { display: grid; gap: 6px; list-style: none; }
+	#tracy-debug .pwa-issue { display: grid; grid-template-columns: 1.1em 1fr; gap: 6px; line-height: 1.45; }
+	#tracy-debug .pwa-issue b { font-size: 10px; line-height: 17px; text-align: center; }
+	#tracy-debug .pwa-error b { color: var(--pwa-error); }
+	#tracy-debug .pwa-warning b { color: var(--pwa-warning); }
+	#tracy-debug .pwa-tip b { color: var(--pwa-accent); font-size: 9px; }
+	#tracy-debug .pwa-ok b { color: var(--pwa-ok); font-size: 12px; }
+
+	#tracy-debug .pwa-config { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; }
+	#tracy-debug .pwa-config dt { color: var(--pwa-muted); }
+	#tracy-debug .pwa-config dd { overflow-wrap: anywhere; }
+
+	#tracy-debug .pwa-sent { display: grid; gap: 10px; list-style: none; }
+	#tracy-debug .pwa-push { display: grid; gap: 3px; padding-left: 10px; border-left: 2px solid var(--pwa-accent); }
+	#tracy-debug .pwa-push.pwa-failed { border-left-color: var(--pwa-error); }
+	#tracy-debug .pwa-push-title { display: flex; justify-content: space-between; gap: 12px; }
+	#tracy-debug .pwa-push-title small { color: var(--pwa-muted); font-size: 11px; white-space: nowrap; }
+	#tracy-debug .pwa-push .pwa-meta { color: var(--pwa-muted); font-size: 11px; overflow-wrap: anywhere; }
+	#tracy-debug .pwa-push .pwa-failure { color: var(--pwa-error); }
+</style>
+
+<h1><?= $logo ?></h1>
+
+<div class="tracy-inner">
+	<div class="tracy-inner-container pwa">
+
+		<section class="pwa-section">
+			<header>
+				<h2>Manifest</h2>
+				<a href="<?= $e($baseUrl) ?>manifest.webmanifest" target="_blank" rel="noopener">/manifest.webmanifest</a>
+			</header>
+			<div class="pwa-body">
+				<?php $issues($data['manifest'], 'Installable, nothing to improve.') ?>
+			</div>
+		</section>
+
+		<section class="pwa-section">
+			<header>
+				<h2>Service worker</h2>
+				<a href="<?= $e($baseUrl) ?>sw.js" target="_blank" rel="noopener">/sw.js</a>
+			</header>
+			<div class="pwa-body">
+				<p class="pwa-muted"><?= $customServiceWorker ? 'App file: ' . $e($serviceWorker) : 'Package file (assets/sw.js)' ?></p>
+				<?php $issues($data['serviceWorker'], 'Served from a secure context.') ?>
+			</div>
+		</section>
+
+		<section class="pwa-section">
+			<header>
+				<h2>Push</h2>
+			</header>
+			<div class="pwa-body">
+				<?php if (null === $push): ?>
+					<p class="pwa-muted">Not configured (pwa: push).</p>
+				<?php else: ?>
+					<dl class="pwa-config">
+						<dt>Subscribe route</dt><dd><?= $e($baseUrl . ltrim($push['subscribePath'], '/')) ?></dd>
+						<dt>VAPID subject</dt><dd><?= $e($push['subject']) ?></dd>
+						<dt>Push services</dt><dd><?= $e(implode(', ', $push['pushServices'])) ?></dd>
+					</dl>
+					<?php $issues($data['push'], 'Configured.') ?>
+
+					<?php if ([] === $data['sent']): ?>
+						<p class="pwa-muted">Nothing sent since the last panel.</p>
+					<?php else: ?>
+						<ul class="pwa-sent">
+							<?php foreach ($data['sent'] as $sent): ?>
+								<li class="pwa-push<?= [] === $sent->failures ? '' : ' pwa-failed' ?>">
+									<div class="pwa-push-title">
+										<b><?= $e($sent->notification->title) ?></b>
+										<small><?= number_format($sent->milliseconds, 1) ?> ms</small>
+									</div>
+									<?php if (null !== $sent->notification->body): ?><div><?= $e($sent->notification->body) ?></div><?php endif ?>
+									<div class="pwa-meta">
+										<?= $e(implode(', ', $sent->topics)) ?><?php if (null !== $sent->notification->url): ?>, opens <?= $e($sent->notification->url) ?><?php endif ?>
+									</div>
+									<div class="pwa-meta">
+										<?php if (0 === $sent->recipients): ?>
+											<span title="no subscription for these topics">0 recipients</span>
+										<?php else: ?>
+											<?= $sent->recipients ?> recipient<?= 1 === $sent->recipients ? '' : 's' ?>, <?= $sent->delivered ?> delivered<?php if ([] !== $sent->expired): ?>, <span title="<?= $e(implode(', ', $sent->expired)) ?>"><?= \count($sent->expired) ?> expired and removed</span><?php endif ?>
+										<?php endif ?>
+									</div>
+									<?php foreach ($sent->failures as $failure): ?>
+										<div class="pwa-meta pwa-failure"><?= $e($failure['service']) ?> <?= $e($failure['status'] ?? '–') ?>: <?= $e($failure['reason']) ?></div>
+									<?php endforeach ?>
+								</li>
+							<?php endforeach ?>
+						</ul>
+					<?php endif ?>
+				<?php endif ?>
+			</div>
+		</section>
+
+	</div>
+</div>

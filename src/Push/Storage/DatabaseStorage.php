@@ -6,6 +6,7 @@ namespace Raneomik\NettePWA\Push\Storage;
 
 use Minishlink\WebPush\Subscription;
 use Nette\Database\Explorer;
+use Nette\Database\Row;
 use Raneomik\NettePWA\Push\SubscriptionStorage;
 
 /**
@@ -49,5 +50,29 @@ final readonly class DatabaseStorage implements SubscriptionStorage
     public function remove(string $endpoint): void
     {
         $this->database->table($this->table)->where('endpoint', $endpoint)->delete();
+    }
+
+    public function replace(string $oldEndpoint, Subscription $subscription): bool
+    {
+        return $this->database->transaction(function () use ($oldEndpoint, $subscription): bool {
+            if (! $this->database->query('SELECT 1 FROM ?name WHERE endpoint = ?', $this->table, $oldEndpoint)->fetch() instanceof Row) {
+                return false; // checked first: nothing of the new endpoint is removed when there is nothing to move
+            }
+
+            if ($oldEndpoint !== $subscription->getEndpoint()) {
+                $this->remove($subscription->getEndpoint()); // (endpoint, topic) is the primary key
+            }
+
+            $this->database->table($this->table)
+                ->where('endpoint', $oldEndpoint)
+                ->update([
+                    'endpoint' => $subscription->getEndpoint(),
+                    'p256dh' => $subscription->getPublicKey(),
+                    'auth' => $subscription->getAuthToken(),
+                    'createdAt' => time(),
+                ]);
+
+            return true;
+        });
     }
 }

@@ -11,7 +11,7 @@ final readonly class Notification implements \JsonSerializable
 {
     /**
      * @param ?string $url opened on click (focused if a tab already shows it)
-     * @param ?string $tag a newer notification with the same tag replaces the previous one
+     * @param ?string $tag a newer notification with the same tag (default: the url) replaces the previous one, and pops up again
      */
     public function __construct(
         public string $title,

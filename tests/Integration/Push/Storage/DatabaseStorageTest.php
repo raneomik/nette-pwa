@@ -62,6 +62,33 @@ final class DatabaseStorageTest extends TestCase
         Assert::same(['https://push/2'], array_column($this->find('room/b'), 0));
     }
 
+    public function testReplaceMovesTheTopicsToTheNewEndpoint(): void
+    {
+        $this->storage->save(new Subscription('https://push/1', 'key', 'auth'), ['room/a', 'player/1']);
+        $this->storage->save(new Subscription('https://push/2', 'key', 'auth'), ['room/b']); // stale rows of the new endpoint
+
+        Assert::true($this->storage->replace('https://push/1', new Subscription('https://push/2', 'key2', 'auth2')));
+
+        Assert::same([['https://push/2', 'key2', 'auth2']], $this->find('room/a', 'player/1'));
+        Assert::same([], $this->find('room/b'), 'the new endpoint gets the topics of the old one only');
+    }
+
+    public function testReplaceKeepsTheEndpointWhenOnlyTheKeysChange(): void
+    {
+        $this->storage->save(new Subscription('https://push/1', 'key', 'auth'), ['room/a']);
+
+        Assert::true($this->storage->replace('https://push/1', new Subscription('https://push/1', 'key2', 'auth2')));
+        Assert::same([['https://push/1', 'key2', 'auth2']], $this->find('room/a'));
+    }
+
+    public function testReplaceAnUnknownEndpoint(): void
+    {
+        $this->storage->save(new Subscription('https://push/2', 'key', 'auth'), ['room/b']);
+
+        Assert::false($this->storage->replace('https://push/1', new Subscription('https://push/2', 'key2', 'auth2')));
+        Assert::same([['https://push/2', 'key', 'auth']], $this->find('room/b'), 'nothing removed when there is nothing to move');
+    }
+
     /**
      * @return list<array{string, ?string, ?string}>
      */

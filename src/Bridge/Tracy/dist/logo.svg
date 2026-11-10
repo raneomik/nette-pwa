@@ -1,0 +1,9 @@
+<!-- Progressive Web Apps community logo, CC0 (public domain): github.com/webmaxru/progressive-web-apps-logo, as is.
+     The grey letters follow the text color (light and dark Tracy themes), the purple W stays. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1952 735" style="{STYLE}" role="img" aria-label="PWA">
+    <path fill="currentColor" d="M1437,603L1493,461L1656,461L1579,244L1675,0L1952,735L1748,735L1701,603L1437,603Z"/>
+    <path fill="#5A0FC8"
+          d="M1262,735L1559,0L1362,0L1160,475L1016,0L864,0L710,475L601,259L502,563L602,735L795,735L935,309L1069,735L1262,735Z"/>
+    <path fill="currentColor"
+          d="M186,483L307,483C344,483 377,479 405,470L437,374L524,105C517,94 510,84 501,75C456,25 391,0 304,0L0,0L0,735L186,735L186,483ZM347,169C364,187 373,210 373,240C373,270 365,293 350,311C333,330 302,340 256,340L186,340L186,143L257,143C299,143 329,151 347,169Z"/>
+</svg>

@@ -7,6 +7,9 @@ namespace Tests\Raneomik\NettePWA\Unit\Push;
 require \dirname(__DIR__, 2) . '/bootstrap.php';
 
 use Minishlink\WebPush\MessageSentReport;
+use Nyholm\Psr7\Request;
+use Raneomik\NettePWA\Push\Debug\SendLogger;
+use Raneomik\NettePWA\Push\Debug\SentPush;
 use Raneomik\NettePWA\Push\Notification;
 use Raneomik\NettePWA\Push\PushSender;
 use Tester\Assert;
@@ -78,6 +81,61 @@ final class PushSenderTest extends TestCase
         $sender->send('room/nobody', new Notification('Hi'));
         $sender->send([], new Notification('Hi'));
         Assert::same(2, $service->created);
+    }
+
+    public function testEverySendIsLoggedInDebugMode(): void
+    {
+        $log = new SendLogger();
+        $sender = new PushSender(new FakePushService([
+            self::Gone => 410,
+            self::Down => 500,
+        ]), $this->storage, $log);
+        $sender->send(['room/a', 'room/b'], new Notification('Hi', url: 'https://app.test/game/1'));
+        $sender->send('room/nobody', new Notification('Hello'));
+
+        [$first, $nobody] = $log->drain();
+        Assert::type(SentPush::class, $first);
+        Assert::same(['room/a', 'room/b'], $first->topics);
+        Assert::same('https://app.test/game/1', $first->notification->url);
+        Assert::same(3, $first->recipients);
+        Assert::same(1, $first->delivered);
+        Assert::same(['push.test'], $first->expired, 'hosts only: an endpoint is a capability URL');
+        Assert::same([[
+            'service' => 'push.test',
+            'status' => 500,
+            'reason' => $first->failures[0]['reason'],
+        ]], $first->failures);
+        Assert::true(0 < $first->milliseconds && 60_000 > $first->milliseconds, 'elapsed time, in ms');
+
+        Assert::same(0, $nobody->recipients, 'a send without listeners is logged too');
+        Assert::same([], $log->drain(), 'drained by the panel');
+    }
+
+    public function testAFailureWithoutResponseIsLogged(): void
+    {
+        $log = new SendLogger();
+        $log->record(['room/a'], new Notification('Hi'), 1, [
+            new MessageSentReport(new Request('POST', 'https://push.test/x'), null, false, 'Connection timed out'),
+        ], 1.0);
+
+        Assert::same([[
+            'service' => 'push.test',
+            'status' => null, // network error: no HTTP status
+            'reason' => 'Connection timed out',
+        ]], $log->drain()[0]->failures);
+    }
+
+    public function testTheLogIsCapped(): void
+    {
+        $log = new SendLogger();
+        $sender = new PushSender(new FakePushService(), $this->storage, $log);
+        for ($i = 0; 60 > $i; ++$i) {
+            $sender->send('room/nobody', new Notification((string) $i));
+        }
+
+        $sent = $log->drain();
+        Assert::count(50, $sent, 'worker mode: a log never drained (no bar) must not grow forever');
+        Assert::same('59', $sent[49]->notification->title);
     }
 }
 

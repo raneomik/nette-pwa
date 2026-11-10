@@ -25,4 +25,11 @@ interface SubscriptionStorage
     public function findByTopics(array $topics): iterable;
 
     public function remove(string $endpoint): void;
+
+    /**
+     * the browser rotated its subscription (sw.js "pushsubscriptionchange"): same topics, new endpoint and keys
+     *
+     * @return bool false when the old endpoint is unknown (expired, removed, or never stored)
+     */
+    public function replace(string $oldEndpoint, Subscription $subscription): bool;
 }

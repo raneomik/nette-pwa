@@ -6,9 +6,11 @@ namespace Tests\Raneomik\NettePWA\Unit\Action;
 
 require \dirname(__DIR__, 2) . '/bootstrap.php';
 
+use Minishlink\WebPush\Subscription;
 use Nette\Application\BadRequestException;
 use Nette\Application\Response;
 use Nette\Application\Responses\JsonResponse;
+use Nette\Application\Responses\VoidResponse;
 use Nette\Http\Request;
 use Nette\Http\UrlScript;
 use Nette\Utils\Json;
@@ -35,12 +37,16 @@ final class SubscribeActionTest extends TestCase
 
     public function testStoresTheAllowedTopicsOnly(): void
     {
-        $response = $this->action('POST', $this->body(['player/2', 'room/a', 'room/a', 42, '']))(); // allowed one not first: a list is still stored
+        $response = $this->action('POST', $this->body([
+            'player/2',
+            'room/a',
+            'room/a',
+            42,
+            '',
+        ]))(); // allowed one not first: a list is still stored
 
         \assert($response instanceof JsonResponse);
-        Assert::same([
-            'topics' => ['room/a'],
-        ], $response->getPayload());
+        Assert::same('{"topics":["room/a"]}', Json::encode($response->getPayload())); // what push-client.js receives
         Assert::same(['room/a'], $this->storage->rows[self::Endpoint][1]);
     }
 
@@ -67,6 +73,9 @@ final class SubscribeActionTest extends TestCase
         $valid = $this->body(['room/a']);
 
         yield 'GET' => ['GET', $valid, true, 403, 'Forbidden'];
+        yield 'PATCH' => ['PATCH', $valid, true, 403, 'Forbidden'];
+        yield 'DELETE without X-Requested-With' => ['DELETE', '{"endpoint":"' . self::Endpoint . '"}', false, 403, 'Forbidden'];
+        yield 'JSON not an object' => ['POST', '"room/a"', true, 400, 'Invalid JSON'];
         yield 'no X-Requested-With' => ['POST', $valid, false, 403, 'Forbidden'];
 
         yield 'missing data' => ['POST', '{}', true, 400, "Missing input at 'subscription'."];
@@ -91,6 +100,79 @@ final class SubscribeActionTest extends TestCase
     {
         Assert::exception(fn (): Response => $this->action($method, $body, $ajax)(), BadRequestException::class, $message, $code);
         Assert::same([], $this->storage->rows);
+    }
+
+    public function testUnsubscribeRemovesTheEndpoint(): void
+    {
+        $this->action('POST', $this->body(['room/a']))();
+        $this->storage->save(new Subscription('https://fcm.googleapis.com/fcm/send/other', 'k', 'a'), ['room/a']);
+
+        $response = $this->action('DELETE', Json::encode([
+            'endpoint' => self::Endpoint,
+        ]))();
+
+        Assert::type(VoidResponse::class, $response);
+        Assert::same(['https://fcm.googleapis.com/fcm/send/other'], array_keys($this->storage->rows));
+    }
+
+    public function testUnsubscribeIsIdempotent(): void
+    {
+        Assert::type(VoidResponse::class, $this->action('DELETE', Json::encode([
+            'endpoint' => self::Endpoint,
+        ]))());
+        Assert::same([], $this->storage->rows);
+    }
+
+    public function testRotateMovesTheTopicsToTheNewEndpoint(): void
+    {
+        $this->action('POST', $this->body(['room/a']))();
+        $new = 'https://fcm.googleapis.com/fcm/send/new';
+
+        $response = $this->action('PUT', $this->rotation(self::Endpoint, $new))();
+
+        Assert::type(VoidResponse::class, $response);
+        Assert::same([$new], array_keys($this->storage->rows));
+        Assert::same(['room/a'], $this->storage->rows[$new][1], 'the topics authorized at subscription are kept');
+        Assert::same('tBHItJI5svbpez7KI4CCXg', $this->storage->rows[$new][0]->getAuthToken());
+    }
+
+    /**
+     * @return iterable<string, array{string, ?string, int, string}>
+     */
+    public function provideInvalidChanges(): iterable
+    {
+        $new = 'https://fcm.googleapis.com/fcm/send/new';
+
+        yield 'unsubscribe without endpoint' => ['DELETE', '{}', 400, 'Invalid subscription endpoint'];
+        yield 'unsubscribe from a non push service' => ['DELETE', '{"endpoint":"https://127.0.0.1/x"}', 400, 'Invalid subscription endpoint'];
+        yield 'unsubscribe with invalid JSON' => ['DELETE', '{nope', 400, 'Invalid JSON'];
+        yield 'rotate an unknown endpoint' => ['PUT', $this->rotation('https://fcm.googleapis.com/fcm/send/unknown', $new), 404, 'Unknown subscription'];
+        yield 'rotate from a non push service' => ['PUT', $this->rotation('https://127.0.0.1/x', $new), 400, 'Invalid subscription endpoint'];
+        yield 'rotate to a non push service' => ['PUT', $this->rotation(self::Endpoint, 'https://127.0.0.1/x'), 400, 'Invalid subscription endpoint'];
+        yield 'rotate without new subscription' => ['PUT', Json::encode([
+            'oldEndpoint' => self::Endpoint,
+        ]), 400, "Missing input at 'subscription'."];
+    }
+
+    /**
+     * @dataProvider provideInvalidChanges
+     */
+    public function testInvalidChangesLeaveTheStorageUntouched(string $method, string $body, int $code, string $message): void
+    {
+        $this->action('POST', $this->body(['room/a']))();
+        $before = $this->storage->rows;
+
+        Assert::exception(fn (): Response => $this->action($method, $body)(), BadRequestException::class, $message, $code);
+        Assert::same($before, $this->storage->rows);
+    }
+
+    private function rotation(string $oldEndpoint, string $newEndpoint): string
+    {
+        $new = Json::decode($this->body(false, $newEndpoint), forceArrays: true);
+
+        return Json::encode([
+            'oldEndpoint' => $oldEndpoint,
+        ] + $new);
     }
 
     private function action(string $method, ?string $body, bool $ajax = true): SubscribeAction

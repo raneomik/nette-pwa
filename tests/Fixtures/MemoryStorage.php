@@ -32,4 +32,17 @@ final class MemoryStorage implements SubscriptionStorage
     {
         unset($this->rows[$endpoint]);
     }
+
+    public function replace(string $oldEndpoint, Subscription $subscription): bool
+    {
+        if (! isset($this->rows[$oldEndpoint])) {
+            return false;
+        }
+
+        $topics = $this->rows[$oldEndpoint][1];
+        unset($this->rows[$oldEndpoint]);
+        $this->rows[$subscription->getEndpoint()] = [$subscription, $topics];
+
+        return true;
+    }
 }

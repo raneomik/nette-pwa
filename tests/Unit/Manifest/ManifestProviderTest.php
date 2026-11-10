@@ -8,7 +8,11 @@ require \dirname(__DIR__, 2) . '/bootstrap.php';
 
 use Nette\Assets\FilesystemMapper;
 use Nette\Assets\Registry;
+use Nette\Utils\Json;
 use Raneomik\NettePWA\Manifest\ManifestProvider;
+use Raneomik\NettePWA\Manifest\Value\Display;
+use Raneomik\NettePWA\Manifest\Value\Icon;
+use Raneomik\NettePWA\Manifest\Value\Manifest;
 use Tester\Assert;
 use Tester\TestCase;
 
@@ -19,29 +23,24 @@ final class ManifestProviderTest extends TestCase
 {
     public function testMembersMappedNullsLeftOutExtraMerged(): void
     {
-        $provider = new ManifestProvider([
-            'name' => 'Demo',
-            'shortName' => 'D',
-            'description' => null,
-            'startUrl' => '/',
-            'backgroundColor' => '#000',
-            'themeColor' => '#111',
-            'icons' => [[
-                'src' => '/icon.png',
-                'sizes' => '192x192',
-                'type' => null,
-                'purpose' => 'maskable',
-            ]],
-            'extra' => [
+        $provider = new ManifestProvider(new Manifest(
+            name: 'Demo',
+            shortName: 'D',
+            backgroundColor: '#000',
+            themeColor: '#111',
+            icons: [new Icon('/icon.png', '192x192', purpose: 'maskable')],
+            extra: [
                 'categories' => ['games'],
                 'name' => 'ignored: members win',
             ],
-        ]);
+        ));
 
         Assert::same([
             'name' => 'Demo',
             'short_name' => 'D',
             'start_url' => '/',
+            'scope' => '/',
+            'display' => 'standalone',
             'background_color' => '#000',
             'theme_color' => '#111',
             'icons' => [[
@@ -51,20 +50,6 @@ final class ManifestProviderTest extends TestCase
             ]],
             'categories' => ['games'],
         ], $provider->build());
-        Assert::same('#111', $provider->getThemeColor());
-    }
-
-    public function testNoIconsNoThemeColor(): void
-    {
-        $provider = new ManifestProvider([
-            'name' => 'Demo',
-        ]);
-
-        Assert::same([
-            'name' => 'Demo',
-            'icons' => [],
-        ], $provider->build());
-        Assert::null($provider->getThemeColor());
     }
 
     public function testIconSourcesUrlOrAssetReference(): void
@@ -72,20 +57,11 @@ final class ManifestProviderTest extends TestCase
         $assets = new Registry();
         $assets->addMapper('img', new FilesystemMapper('https://cdn.example.com/img', \dirname(__DIR__, 2) . '/Fixtures/img', ['svg'], versioning: false));
 
-        $provider = new ManifestProvider([
-            'name' => 'Demo',
-            'icons' => [
-                [
-                    'src' => 'img:icon',
-                ],
-                [
-                    'src' => '/static/icon.svg',
-                ],
-                [
-                    'src' => 'https://other.example.com/icon.svg',
-                ],
-            ],
-        ], $assets);
+        $provider = new ManifestProvider(new Manifest('Demo', icons: [
+            new Icon('img:icon'),
+            new Icon('/static/icon.svg'),
+            new Icon('https://other.example.com/icon.svg'),
+        ]), $assets);
 
         Assert::same(
             ['https://cdn.example.com/img/icon.svg', '/static/icon.svg', 'https://other.example.com/icon.svg'],
@@ -95,21 +71,34 @@ final class ManifestProviderTest extends TestCase
 
     public function testAssetReferenceWithoutNetteAssetsIsKeptAsIs(): void
     {
-        Assert::same('img:icon', (new ManifestProvider([
-            'name' => 'Demo',
-            'icons' => [[
-                'src' => 'img:icon',
-            ]],
-        ]))->build()['icons'][0]['src']);
+        Assert::same(
+            'img:icon',
+            (new ManifestProvider(new Manifest('Demo', icons: [new Icon('img:icon')])))->build()['icons'][0]['src'],
+        );
+    }
+
+    public function testTheValueObjectsEncodeAsTheSpec(): void
+    {
+        Assert::same(
+            '{"name":"Demo","start_url":"/","scope":"/","display":"browser","icons":[{"src":"img:icon","sizes":"any"}]}',
+            Json::encode(new Manifest('Demo', display: Display::Browser, icons: [new Icon('img:icon', 'any')])),
+        );
     }
 
     public function testJsonIsPrettyAndBuiltOnce(): void
     {
-        $provider = new ManifestProvider([
-            'name' => 'Démo / app',
-        ]);
+        $provider = new ManifestProvider(new Manifest('Démo / app'));
 
-        Assert::same("{\n    \"name\": \"Démo / app\",\n    \"icons\": []\n}", $provider->getJson());
+        Assert::same(<<<'JSON'
+            {
+                "name": "Démo / app",
+                "start_url": "/",
+                "scope": "/",
+                "display": "standalone",
+                "icons": []
+            }
+            JSON
+, $provider->getJson());
         Assert::same($provider->getJson(), $provider->getJson());
     }
 }

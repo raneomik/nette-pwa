@@ -1,0 +1,17 @@
+<?php declare(strict_types=1);
+
+/**
+ * @var int $errors manifest / service worker / push configuration errors
+ * @var int $sent pushes sent since the last panel (worker mode: other requests too)
+ * @var int $failed of which with failed deliveries
+ * @var string $logo dist/tab-logo.svg: it reads "PWA", no text label next to it
+ */
+?>
+<span title="PWA: manifest, service worker<?= $sent ? ', ' . $sent . ' push(es) sent' : '' ?>">
+	<?= $logo ?><?php
+	// no empty label: its margin (.2em) would pad the logo on the right only
+	if ($sent || $errors || $failed): ?><span class="tracy-label"><?php
+		if ($sent): ?><span style="font-weight:bold"><?= $sent ?></span><?php endif ?><?php
+		if ($errors || $failed): ?> <span style="color:#fff;background:#c00;border-radius:3px;padding:0 3px;font-weight:bold"><?= $errors + $failed ?></span><?php endif
+	?></span><?php endif ?>
+</span>

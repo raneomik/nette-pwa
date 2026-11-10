@@ -2,7 +2,7 @@
 
 namespace Raneomik\NettePWA\Action\Value;
 
-final readonly class TopicsInput
+final readonly class TopicsInput implements \JsonSerializable
 {
     private const int MaxTopics = 20;
 
@@ -41,5 +41,15 @@ final readonly class TopicsInput
         }
 
         return new self($topics);
+    }
+
+    /**
+     * @return string[][]
+     */
+    public function jsonSerialize(): array
+    {
+        return [
+            'topics' => $this->values,
+        ];
     }
 }

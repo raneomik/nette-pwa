@@ -12,6 +12,7 @@ use Nette\Http\UrlScript;
 use Raneomik\NettePWA\Action\RevalidatedResponse;
 use Tester\Assert;
 use Tester\TestCase;
+use Tests\Raneomik\NettePWA\Fixtures\RecordingResponse;
 
 /**
  * One case per method: @testCase runs each in its own process, the HTTP code is process-wide.
@@ -36,6 +37,20 @@ final class RevalidatedResponseTest extends TestCase
     {
         // computed here: getHeader() sees no sent header in CLI
         Assert::same(['', 304], $this->send('"' . hash('xxh128', self::Content) . '"'));
+    }
+
+    public function testHeadersMakeTheBrowserRevalidate(): void
+    {
+        $httpResponse = new RecordingResponse();
+        ob_start();
+        (new RevalidatedResponse(self::Content, 'application/manifest+json'))->send(new Request(new UrlScript('https://example.com/')), $httpResponse);
+        ob_end_clean();
+
+        Assert::same([
+            'Content-Type' => 'application/manifest+json; charset=utf-8',
+            'Cache-Control' => 'no-cache',
+            'ETag' => '"' . hash('xxh128', self::Content) . '"',
+        ], $httpResponse->headers);
     }
 
     /**

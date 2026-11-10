@@ -8,7 +8,8 @@ use Latte\Extension;
 use Latte\Runtime\Html;
 use Nette\Http\IRequest;
 use Nette\Utils\Html as El;
-use Raneomik\NettePWA\Manifest\ManifestProvider;
+use Raneomik\NettePWA\Action\SubscribeAction;
+use Raneomik\NettePWA\Manifest\Value\Manifest;
 
 /**
  * {pwaHead()} in <head>: manifest link, theme color, and what assets/push-client.js reads
@@ -16,9 +17,10 @@ use Raneomik\NettePWA\Manifest\ManifestProvider;
 final class PWALatteExtension extends Extension
 {
     public function __construct(
-        private readonly ManifestProvider $manifest,
+        private readonly Manifest $manifest,
         private readonly IRequest $request,
         private readonly ?string $vapidPublicKey = null, // null = push disabled
+        private readonly string $subscribePath = SubscribeAction::DefaultPath, // "subscribeAtPath", relative to the base path like the route
     ) {
     }
 
@@ -29,7 +31,7 @@ final class PWALatteExtension extends Extension
         ];
     }
 
-    public function head(): Html
+    private function head(): Html
     {
         $base = rtrim($this->request->getUrl()->getBasePath(), '/');
         $tags = [
@@ -38,7 +40,7 @@ final class PWALatteExtension extends Extension
                 'href' => "{$base}/manifest.webmanifest",
             ])];
 
-        if (null !== ($color = $this->manifest->getThemeColor())) {
+        if (null !== ($color = $this->manifest->themeColor)) {
             $tags[] = El::el('meta', [
                 'name' => 'theme-color',
                 'content' => $color,
@@ -52,7 +54,7 @@ final class PWALatteExtension extends Extension
             ]);
             $tags[] = El::el('meta', [
                 'name' => 'pwa-subscribe-url',
-                'content' => "{$base}/pwa/push/subscribe",
+                'content' => "{$base}/" . ltrim($this->subscribePath, '/'),
             ]);
             $tags[] = El::el('meta', [
                 'name' => 'pwa-sw-url',
@@ -60,6 +62,6 @@ final class PWALatteExtension extends Extension
             ]);
         }
 
-        return new Html(implode("\n", array_map(strval(...), $tags)));
+        return new Html(implode("\n", $tags));
     }
 }

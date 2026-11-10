@@ -11,7 +11,34 @@ self.addEventListener('push', (event) => {
             return;
         }
 
-        await self.registration.showNotification(title ?? '', {body, tag: tag ?? url, data: {url}});
+        // renotify: a notification replacing one with the same tag pops up again, instead of silently taking its place
+        // in the notification center (Chrome refuses renotify without a tag)
+        const replaces = tag ?? url;
+        await self.registration.showNotification(title ?? '', {body, tag: replaces, renotify: Boolean(replaces), data: {url}});
+    })());
+});
+
+// The browser (mostly Firefox) may rotate the subscription: the old endpoint stops working, without
+// any page open to notice. Subscribe again and let the server move the topics to the new endpoint.
+// The subscribe URL comes from the registration URL (sw.js?subscribe=...), set by push-client.js.
+self.addEventListener('pushsubscriptionchange', (event) => {
+    const subscribeUrl = new URL(self.location.href).searchParams.get('subscribe');
+    const old = event.oldSubscription;
+    if (!subscribeUrl || !old) {
+        return; // nothing to move: the next visit with the permission granted subscribes again
+    }
+
+    event.waitUntil((async () => {
+        const subscription = event.newSubscription ?? await self.registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: old.options?.applicationServerKey,
+        });
+
+        await fetch(subscribeUrl, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+            body: JSON.stringify({oldEndpoint: old.endpoint, subscription}),
+        });
     })());
 });
 

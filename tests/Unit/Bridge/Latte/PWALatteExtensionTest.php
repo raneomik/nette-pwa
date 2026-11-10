@@ -11,7 +11,7 @@ use Latte\Loaders\StringLoader;
 use Nette\Http\Request;
 use Nette\Http\UrlScript;
 use Raneomik\NettePWA\Bridge\Latte\PWALatteExtension;
-use Raneomik\NettePWA\Manifest\ManifestProvider;
+use Raneomik\NettePWA\Manifest\Value\Manifest;
 use Tester\Assert;
 use Tester\TestCase;
 
@@ -47,17 +47,30 @@ final class PWALatteExtensionTest extends TestCase
         );
     }
 
+    public function testSubscribeUrlFollowsTheConfiguredPath(): void
+    {
+        foreach (['pwa-subscribe', '/pwa-subscribe'] as $path) { // same route either way: relative to the base path
+            Assert::contains(
+                '<meta name="pwa-subscribe-url" content="/app/pwa-subscribe">',
+                $this->render([
+                    'name' => 'Demo',
+                ], 'KEY', $path),
+            );
+        }
+    }
+
     /**
      * @param array<string, mixed> $manifest
      */
-    private function render(array $manifest, ?string $key): string
+    private function render(array $manifest, ?string $key, string $subscribePath = 'pwa/push/subscribe'): string
     {
         $latte = new Engine();
         $latte->setLoader(new StringLoader());
         $latte->addExtension(new PWALatteExtension(
-            new ManifestProvider($manifest),
+            new Manifest(...$manifest),
             new Request(new UrlScript('https://example.com/app/x', '/app/')),
             $key,
+            $subscribePath,
         ));
 
         return $latte->renderToString('{pwaHead()}');

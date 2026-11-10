@@ -6,6 +6,7 @@ namespace Tests\Raneomik\NettePWA\Integration\Bridge\DI;
 
 require \dirname(__DIR__, 3) . '/bootstrap.php';
 
+use Base64Url\Base64Url;
 use Latte\Loaders\StringLoader;
 use Minishlink\WebPush\VAPID;
 use Minishlink\WebPush\WebPush;
@@ -18,17 +19,22 @@ use Nette\Routing\Router;
 use Raneomik\NettePWA\Action\ManifestAction;
 use Raneomik\NettePWA\Action\ServiceWorkerAction;
 use Raneomik\NettePWA\Action\SubscribeAction;
+use Raneomik\NettePWA\Bridge\Tracy\PWAPanel;
+use Raneomik\NettePWA\Manifest\ManifestInspector;
 use Raneomik\NettePWA\Manifest\ManifestProvider;
+use Raneomik\NettePWA\Push\Debug\SendLogger;
 use Raneomik\NettePWA\Push\Notification;
 use Raneomik\NettePWA\Push\PushSender;
 use Raneomik\NettePWA\Push\PushServices;
 use Raneomik\NettePWA\Push\Storage\DatabaseStorage;
 use Raneomik\NettePWA\Push\SubscriptionStorage;
 use Raneomik\NettePWA\Push\WebPushFactory;
+use Symfony\Component\HttpClient\Psr18Client;
 use Tester\Assert;
 use Tester\TestCase;
 use Tests\Raneomik\NettePWA\Fixtures\ContainerFactory;
 use Tests\Raneomik\NettePWA\Fixtures\MemoryStorage;
+use Tracy\Bar;
 
 /**
  * @testCase
@@ -119,6 +125,15 @@ final class PWAExtensionTest extends TestCase
         Assert::type(WebPush::class, $first = $factory->create());
         Assert::notSame($first, $factory->create());
         Assert::same(2419200, $first->getDefaultOptions()['TTL']); // schema default
+        $vapid = $this->property($first, 'auth')['VAPID'] ?? [];
+        Assert::same('mailto:test@example.com', $vapid['subject'] ?? null);
+        Assert::same(Base64Url::decode($keys['publicKey']), $vapid['publicKey'] ?? null); // WebPush keeps them decoded
+
+        // per push service call, during the request: a slow one must not hang the page
+        $client = $this->property($container->getService('pwa.httpClient'), 'client');
+        Assert::same(3.0, $this->property($client, 'defaultOptions')['timeout']);
+        Assert::same(3.0, $this->property($client, 'defaultOptions')['max_duration']);
+        Assert::null($container->getByType(Psr18Client::class, false), 'the app keeps its own HTTP client');
 
         Assert::type(DatabaseStorage::class, $container->getByType(SubscriptionStorage::class));
         Assert::null($container->getByType(SubscribeAction::class, false));
@@ -163,6 +178,110 @@ final class PWAExtensionTest extends TestCase
         Assert::same([], $sender->send([], new Notification('Hi')));
     }
 
+    public function testSubscribePathIsTheSameForTheRouteAndTheMeta(): void
+    {
+        $keys = VAPID::createVapidKeys();
+        $container = ContainerFactory::create(
+            str_replace("publicKey: '', privateKey: ''", "publicKey: '{$keys['publicKey']}', privateKey: '{$keys['privateKey']}'", self::Push) . "\n        subscribeAtPath: '/pwa-subscribe'",
+            self::Router,
+            self::Authorizer,
+        );
+        $router = $container->getByType(Router::class);
+
+        // relative to the base path, even with a leading "/": an app in a subdirectory gets both right
+        $inSubdirectory = new Request(new UrlScript('https://example.com/app/pwa-subscribe', '/app/'));
+        Assert::type(SubscribeAction::class, $router->match($inSubdirectory)['callback'] ?? null);
+        Assert::false(($this->match($router, '/pwa/push/subscribe')['callback'] ?? null) instanceof SubscribeAction, 'the default path is replaced');
+
+        $latte = $container->getByType(LatteFactory::class)->create();
+        $latte->setLoader(new StringLoader());
+        Assert::contains('<meta name="pwa-subscribe-url" content="/pwa-subscribe">', $latte->renderToString('{pwaHead()}'));
+    }
+
+    public function testServiceWorkerUrlMayCarryTheSubscribeUrl(): void
+    {
+        $router = ContainerFactory::create(self::Push, self::Router, self::Authorizer)->getByType(Router::class);
+        $url = new UrlScript('https://example.com/sw.js?subscribe=%2Fpwa%2Fpush%2Fsubscribe', '/');
+
+        $params = $router->match(new Request($url)) ?? [];
+        Assert::type(ServiceWorkerAction::class, $params['callback'] ?? null);
+        // MicroPresenter redirects (301) a GET whose canonical URL differs: the query must survive it
+        Assert::same((string) $url, $router->constructUrl($params, $url));
+    }
+
+    public function testTracyPanelLogsThePushesInDebugMode(): void
+    {
+        $container = ContainerFactory::create(
+            self::Push . "\n    debugger: true",
+            self::Router,
+            self::Authorizer,
+            "services:\n    - Tests\\Raneomik\\NettePWA\\Fixtures\\MemoryStorage",
+        );
+
+        $panel = $this->panel($container);
+        Assert::type(SendLogger::class, $container->getService('pwa.sendLogger'));
+        Assert::null($container->getByType(SendLogger::class, false));
+        Assert::null($container->getByType(ManifestInspector::class, false));
+
+        // the sender records into the very log the panel drains
+        $container->getByType(PushSender::class)->send('room/nobody', new Notification('Hi'));
+        Assert::match('%A%Package file (assets/sw.js)%A%Hi%A%room/nobody%A%', $panel->getPanel()); // read once: the panel memoizes
+    }
+
+    public function testTheDefaultVapidSubjectIsTheBaseUrl(): void
+    {
+        $container = ContainerFactory::create(
+            str_replace(", subject: 'mailto:test@example.com'", '', self::Push) . "\n    debugger: true",
+            self::Router,
+            self::Authorizer,
+        );
+
+        $baseUrl = rtrim($container->getByType(\Nette\Http\IRequest::class)->getUrl()->getBaseUrl(), '/');
+        Assert::match("%A%<dt>VAPID subject</dt><dd>{$baseUrl}</dd>%A%", $this->panel($container)->getPanel());
+        Assert::notContains('%baseUrl%', $this->panel($container)->getPanel());
+    }
+
+    public function testNoPanelOutsideDebugMode(): void
+    {
+        $container = ContainerFactory::create(self::Push . "\n    debugger: false", self::Router, self::Authorizer);
+
+        Assert::null($container->getByType(Bar::class)->getPanel('pwa'));
+        Assert::false($container->hasService('pwa.sendLogger'), 'nothing recorded in production');
+    }
+
+    // one process each: the Tracy bar is static, a panel added by one container stays for the next
+    public function testThePanelFollowsTheDebugModeByDefault(): void
+    {
+        $container = ContainerFactory::create("pwa:\n    manifest: {name: Demo}", "parameters:\n    debugMode: true", self::Router);
+
+        Assert::type(PWAPanel::class, $container->getByType(Bar::class)->getPanel('pwa'));
+    }
+
+    public function testNoPanelOutsideTheDebugModeByDefault(): void
+    {
+        $container = ContainerFactory::create("pwa:\n    manifest: {name: Demo}", "parameters:\n    debugMode: false", self::Router);
+
+        Assert::null($container->getByType(Bar::class)->getPanel('pwa'));
+    }
+
+    public function testPanelWithoutPush(): void
+    {
+        $container = ContainerFactory::create("pwa:\n    manifest: {name: Demo}\n    debugger: true", self::Router);
+
+        $panel = $this->panel($container);
+        Assert::contains('Not configured (pwa: push).', $panel->getPanel());
+    }
+
+    private function panel(Container $container): PWAPanel
+    {
+        $panel = $container->getByType(Bar::class)->getPanel('pwa');
+        if (! $panel instanceof PWAPanel) {
+            throw new \LogicException('The PWA panel is not on the Tracy bar.');
+        }
+
+        return $panel;
+    }
+
     public function testPushWithoutTopicAuthorizerIsRefused(): void
     {
         Assert::exception(
@@ -170,6 +289,11 @@ final class PWAExtensionTest extends TestCase
             InvalidConfigurationException::class,
             '~TopicAuthorizer~',
         );
+    }
+
+    private function property(object $object, string $name): mixed
+    {
+        return (fn (): mixed => $this->{$name})->call($object);
     }
 
     /**
