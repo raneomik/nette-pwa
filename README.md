@@ -1,5 +1,4 @@
-Nette PWA Extension
-===================
+# Nette PWA Extension
 
 [![.github/workflows/ci.yml](https://github.com/raneomik/nette-pwa/actions/workflows/ci.yml/badge.svg?style=flat-square)](https://github.com/raneomik/nette-pwa/actions/workflows/ci.yml)
 [![.github/workflows/coverage.yml](https://github.com/raneomik/nette-pwa/actions/workflows/coverage.yml/badge.svg?style=flat-square)](https://github.com/raneomik/nette-pwa/actions/workflows/coverage.yml)
@@ -7,65 +6,80 @@ Nette PWA Extension
 [![Mutation Testing](https://github.com/raneomik/nette-pwa/actions/workflows/mutation-test.yml/badge.svg)](https://github.com/raneomik/nette-pwa/actions/workflows/mutation-test.yml)
 [![Mutation testing badge](https://img.shields.io/endpoint?style=flat&url=https%3A%2F%2Fbadge-api.stryker-mutator.io%2Fgithub.com%2Franeomik%2Fnette-pwa%2Fmain)](https://dashboard.stryker-mutator.io/reports/github.com/raneomik/nette-pwa/main)
 
-
 *Work In Progress*
 
-📲 Nette extension for Progressive Web Apps: the web app manifest written in NEON, a service worker,
-and Web Push notifications (optional) with [minishlink/web-push](https://github.com/web-push-libs/web-push-php).
+📲 Nette extension for Progressive Web Apps:
+the web app manifest written in NEON, a service worker, and Web Push notifications (optional) with
+[minishlink/web-push](https://github.com/web-push-libs/web-push-php).
 
-## Configuration
+## Requirements
+
+- PHP 8.3 or newer
+- `nette/application` 3.2 or newer, with a `RouteList` router
+- Optional, suggested during install:
+
+| Package | For |
+|---------|-----|
+| `latte/latte` | `{pwaHead()}` |
+| `nette/assets` | versioned icon URLs (`src: 'img:icon'`) |
+| `minishlink/web-push`, `symfony/http-client`, `nyholm/psr7` | Web Push (`ext-gmp` strongly advised) |
+| `nette/database` | default subscription storage |
+| `tracy/tracy` | debug panel |
+
+## Getting started
+
+```bash
+composer require raneomik/nette-pwa
+```
+
+Register the extension and describe the manifest:
 
 ```neon
+extensions:
+    pwa: Raneomik\NettePWA\Bridge\DI\PWAExtension
+
 pwa:
-    manifest: # served at /manifest.webmanifest
+    manifest:
         name: My app
         shortName: App
         backgroundColor: '#11161c'
         themeColor: '#11161c'
         icons:
-            - {src: 'img:icon', sizes: any, type: image/svg+xml}  # Nette Assets ref = versioned URL, or '/icon.svg'
-        # startUrl: /  scope: /  display: standalone   # defaults; display: fullscreen | standalone | minimal-ui | browser
-        extra:  # any other manifest member, as is (shortcuts, screenshots, display_override...)
-            categories: [games]
-
-    # serviceWorker: %appDir%/../assets/sw.js   # your own copy of assets/sw.js (offline cache...), served at /sw.js
-
-    push: # optional: Web Push + POST /pwa/push/subscribe
-        vapid:
-            publicKey: %vapidPublicKey%   # dynamic parameter (getenv); empty = push off, opt-in hidden
-            privateKey: %vapidPrivateKey%
-            # subject: 'mailto:admin@example.com'  # default %baseUrl%
-        # ttl: 2419200
-        # urgency: normal
-        # timeout: 3.0
-        # table: push_subscriptions
-        # pushServices: [...]       # endpoint hosts accepted (default: FCM, Mozilla, Apple, Windows)
-        # subscribeAtPath: pwa-subscribe # default 'pwa/push/subscribe', relative to the base path (like /sw.js)
+            - {src: 'img:icon', sizes: any, type: image/svg+xml} # Nette Assets ref, or '/icon.svg'
 ```
 
-The routes are prepended to the app's `RouteList`, so a catch-all `<presenter>/<action>` does not
-take them. They are served by PHP (no file to dump, never stale after a deploy) with
-`Cache-Control: no-cache` + `ETag`: the browser gets a 304 while nothing changed.
-
-The `manifest` section is validated at compile time and becomes a typed, read-only value object
-(`Manifest\Value\Manifest`, with `Icon` and the `Display` enum). It is reachable from the
-autowired `ManifestProvider`:
-
-```php
-$manifest = $manifestProvider->manifest;  // Raneomik\NettePWA\Manifest\Value\Manifest
-$manifest->themeColor;                    // ?string
-$manifest->display;                       // Display::Standalone
-$manifest->icons[0]->src;                 // 'img:icon', as configured (the JSON gets the asset URL)
-$manifest->extra['categories'];           // the extra members stay raw
-```
+Link it from your layout:
 
 ```latte
 <head>
-    {pwaHead()}   {* manifest link, theme-color, and the <meta> tags read by push-client.js *}
+    {pwaHead()}
 </head>
+```
 
-{* the browser listens to these topics (all the buttons of the page, replacing a previous page's) *}
-{* a toggle: clicked again, it turns notifications off (aria-pressed="true" while on) *}
+The manifest is now served at `/manifest.webmanifest`, the service worker at `/sw.js`.
+
+### Enable Web Push
+
+```bash
+composer require minishlink/web-push symfony/http-client nyholm/psr7
+php -r 'require "vendor/autoload.php"; print_r(Minishlink\WebPush\VAPID::createVapidKeys());'
+```
+
+```neon
+pwa:
+    push:
+        vapid:
+            publicKey: %vapidPublicKey%   # dynamic parameter; empty = push off, opt-in hidden
+            privateKey: %vapidPrivateKey%
+```
+
+Then:
+
+1. declare a [`TopicAuthorizer`](#authorize-topics) service (required);
+2. create the [subscriptions table](#store-subscriptions);
+3. add an opt-in button and the client script:
+
+```latte
 <button type="button" data-pwa-push="player/{$user->id} room/{$room}" data-pwa-on="🔔 On">🔔 Notify me</button>
 ```
 
@@ -73,31 +87,24 @@ $manifest->extra['categories'];           // the extra members stay raw
 import '../vendor/raneomik/nette-pwa/assets/push-client.js';
 ```
 
-## Web Push
+The button is a toggle: clicked again, it turns notifications off (`aria-pressed="true"` while on).
 
-```bash
-composer require minishlink/web-push symfony/http-client nyholm/psr7   # + ext-gmp, strongly advised
-php -r 'require "vendor/autoload.php"; print_r(Minishlink\WebPush\VAPID::createVapidKeys());'
-```
+### Send a notification
 
-Topics work as with Mercure: a browser subscribes to topics, you send to a topic without knowing
-who listens. Unlike Mercure, the browser is not connected: its subscription (endpoint + keys) is
-stored, it is the only way to reach it later.
+Topics work as with Mercure: a browser subscribes to topics, you send to a topic without knowing who listens.
 
 ```php
+use Raneomik\NettePWA\Push\Notification;
+
 $failures = $pushSender->send("player/{$id}", new Notification('Bob joined', 'Time to play!', url: $link));
 $pushSender->send(['room/abc', 'room/def'], $notification); // each browser once
 ```
 
 Expired subscriptions (404/410) are removed; the other failures are returned for you to log.
 
-A visitor who turns notifications off (`DELETE` on the subscribe route) stays off on the next pages,
-even though the browser permission is still granted. When the browser rotates a subscription (mostly
-Firefox), `sw.js` subscribes again and the server moves its topics to the new endpoint (`PUT`).
+### Authorize topics
 
-**Required**: a `TopicAuthorizer` service, which topics the visitor may subscribe to (the compilation
-fails without one: "allow all" would let anyone receive anyone's pushes). Usually the same rule as
-your Mercure subscriber authorization:
+The compilation fails without a `TopicAuthorizer` service: "allow all" would let anyone receive anyone's pushes.
 
 ```php
 final class TopicAccess implements Raneomik\NettePWA\Push\TopicAuthorizer
@@ -111,47 +118,143 @@ final class TopicAccess implements Raneomik\NettePWA\Push\TopicAuthorizer
 }
 ```
 
-Default storage (`nette/database`; your own `SubscriptionStorage` service replaces it, it must implement
-`save()`, `findByTopics()`, `remove()` and `replace()`), table to create:
+### Store subscriptions
+
+Table of the default storage (`nette/database`):
 
 ```sql
 CREATE TABLE push_subscriptions (endpoint TEXT NOT NULL, topic TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, createdAt INTEGER NOT NULL, PRIMARY KEY (endpoint, topic));
 CREATE INDEX push_subscriptions_topic ON push_subscriptions (topic);
 ```
 
-### Tracy panel
+Your own `Raneomik\NettePWA\Push\SubscriptionStorage` service replaces it.
 
-In debug mode, a **PWA** panel shows what the browser DevTools cannot:
+### Customize the service worker
 
-- **Manifest**: install criteria (display, start_url within scope, an icon of 144x144 or more), the icon
-  files themselves (found, actual size matching `sizes`), and recommendations (`shortName`, maskable icon,
-  `themeColor`, `backgroundColor`, `id`);
-- **Service worker**: secure context (HTTPS, or localhost), the file served, and the push listeners a custom
-  `serviceWorker` file must keep;
-- **Push**: the VAPID subject (Apple refuses localhost) and every `PushSender::send()` of the request:
-  topics, notification, recipients (0 = nobody listens to these topics), delivered, expired, failures with
-  the push service status, duration. Endpoints are never shown, only the push service host.
+Copy `assets/sw.js`, add what you need (offline cache...), keep its `push`, `pushsubscriptionchange` and
+`notificationclick` listeners:
 
-The tab (the [PWA community logo](https://github.com/webmaxru/progressive-web-apps-logo), CC0) counts the
-pushes sent and, in red, the errors. `debugger: false` turns it off, `debugger: true` forces it; without
-`debugger`, it follows `%debugMode%`. Outside debug mode, nothing is recorded.
+```neon
+pwa:
+    serviceWorker: %appDir%/../assets/sw.js
+```
 
-### Testing locally
+### Test locally
 
-- `sw.js` shows nothing when a **focused** tab already shows the notification's URL: the app is expected to
-  display it its own way (e.g. Mercure). Switch tabs or minimize the window before sending.
+- `sw.js` shows nothing when a **focused** tab already shows the notification's URL: switch tabs or minimize the window.
 - The service worker only registers on a certificate the browser trusts: import the local CA (Caddy's, mkcert's)
   in the system store, and in Firefox's own store (or set `security.enterprise_roots.enabled`).
-- Notifications must be allowed for the browser itself by the OS (macOS Focus, Windows Focus assist).
+- Notifications must be allowed for the browser by the OS (macOS Focus, Windows Focus assist).
 - DevTools > Application > Service Workers > *Push* (data `{"title": "Test"}`) shows one without the server:
-  if it appears, look at the server side (the failures returned by `send()`).
+  if it appears, look at the failures returned by `send()`.
 - Safari rejects a `localhost` VAPID subject: set `subject: 'mailto:...'`.
+- On iOS, Web Push works only in the installed app (Add to Home Screen).
 
-On iOS, Web Push works only in the installed app (Add to Home Screen): `push-client.js` shows the
-`data-pwa-install` label there.
+## Reference
 
-## Tests
+### Configuration
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `manifest.name` | required | |
+| `manifest.shortName`, `description`, `id`, `orientation`, `lang`, `backgroundColor`, `themeColor` | – | |
+| `manifest.startUrl`, `manifest.scope` | `/` | |
+| `manifest.display` | `standalone` | `fullscreen`, `standalone`, `minimal-ui`, `browser` |
+| `manifest.icons[]` | – | `src` (required: Nette Assets ref or URL), `sizes`, `type`, `purpose` |
+| `manifest.extra` | – | any other manifest member, as is (`shortcuts`, `screenshots`...) |
+| `serviceWorker` | package `assets/sw.js` | file served at `/sw.js` |
+| `push` | `null` | no push services, no subscribe route |
+| `push.vapid.publicKey`, `privateKey` | required | dynamic parameters allowed |
+| `push.vapid.subject` | `%baseUrl%` | `mailto:` or `https://` |
+| `push.ttl` | `2419200` | seconds the push service keeps a push for an offline device |
+| `push.urgency` | – | `very-low`, `low`, `normal`, `high` |
+| `push.timeout` | `3.0` | seconds, per push service call |
+| `push.table` | `push_subscriptions` | default storage only |
+| `push.pushServices` | FCM, Mozilla, Apple, Windows | endpoint hosts accepted |
+| `push.subscribeAtPath` | `pwa/push/subscribe` | relative to the base path |
+| `debugger` | `%debugMode%` | Tracy panel |
+
+### Routes
+
+Prepended to the app's `RouteList`, served by PHP with `Cache-Control: no-cache` + `ETag`.
+
+| Route | Method | |
+|-------|--------|---|
+| `/manifest.webmanifest` | `GET` | |
+| `/sw.js` | `GET` | |
+| `/pwa/push/subscribe` | `POST` | subscribe to topics |
+| | `PUT` | subscription rotated by the browser: topics move to the new endpoint |
+| | `DELETE` | unsubscribe |
+
+### Latte
+
+`{pwaHead()}`: manifest link, `theme-color`, and the `<meta>` tags read by `push-client.js`.
+
+### Button attributes (`push-client.js`)
+
+| Attribute | Value |
+|-----------|-------|
+| `data-pwa-push` | topics, space separated; the browser listens to those of all the buttons of the page |
+| `data-pwa-on` | label while on (default `🔔 Notifications on`) |
+| `data-pwa-blocked` | label when the permission is denied |
+| `data-pwa-error` | label when the subscription fails |
+| `data-pwa-install` | label on iOS outside the installed app |
+
+### PHP
+
+| Service | |
+|---------|---|
+| `Manifest\ManifestProvider` | `->manifest`: typed, read-only `Manifest\Value\Manifest` (`Icon`, `Display` enum) |
+| `Push\PushSender` | `send(string\|array $topics, Notification $notification): array` of failures |
+| `Push\Notification` | `title`, `body`, `url` (opened on click), `tag` (replaces a previous one, default: the url) |
+| `Push\TopicAuthorizer` | `isAllowed(string $topic): bool`, yours to implement |
+| `Push\SubscriptionStorage` | `save()`, `findByTopics()`, `remove()`, `replace()` |
+
+```php
+$manifest = $manifestProvider->manifest;
+$manifest->themeColor;          // ?string
+$manifest->display;             // Display::Standalone
+$manifest->icons[0]->src;       // 'img:icon', as configured (the JSON gets the asset URL)
+$manifest->extra['categories']; // the extra members stay raw
+```
+
+## How it works
+
+- The manifest and the service worker are served by PHP: no file to dump, never stale after a deploy.
+  The browser gets a 304 while nothing changed.
+- Unlike Mercure, the browser is not connected: its subscription (endpoint + keys) is stored, it is the only way
+  to reach it later.
+- A visitor who turns notifications off stays off on the next pages, even though the browser permission is still granted.
+- When the browser rotates a subscription (mostly Firefox), `sw.js` subscribes again and the server moves its topics
+  to the new endpoint.
+
+## Debugging
+
+In debug mode, a **PWA** [<img src="https://tracy.nette.org/favicon.ico" width="13"> Tracy](https://tracy.nette.org) panel
+shows what the browser DevTools cannot:
+
+- **Manifest**: install criteria (display, start_url within scope, an icon of 144x144 or more), the icon files
+  (found, actual size matching `sizes`), and recommendations (`shortName`, maskable icon, `themeColor`, `backgroundColor`, `id`);
+- **Service worker**: secure context, the file served, and the push listeners a custom file must keep;
+- **Push**: the VAPID subject and every `PushSender::send()` of the request: topics, notification, recipients, delivered,
+  expired, failures with the push service status, duration. Endpoints are never shown, only the push service host.
+
+The tab counts the pushes sent and, in red, the errors. Outside debug mode, nothing is recorded.
+
+## Development
 
 ```bash
 composer install && composer ci
 ```
+
+## Resources
+
+- [<img src="https://nette.org/favicon.ico" width="13"> Nette](https://nette.org),
+  [<img src="https://latte.nette.org/favicon.ico" width="13"> Latte](https://latte.nette.org),
+  [<img src="https://tracy.nette.org/favicon.ico" width="13"> Tracy](https://tracy.nette.org)
+- [minishlink/web-push](https://github.com/web-push-libs/web-push-php)
+- [PWA community logo](https://github.com/webmaxru/progressive-web-apps-logo) (CC0), used by the panel tab
+
+## License
+
+[MIT](licence)
