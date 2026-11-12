@@ -137,7 +137,7 @@ $issues = static function (array $list, string $ok) use ($e, $icons): void {
 										<?php if (0 === $sent->recipients): ?>
 											<span title="no subscription for these topics">0 recipients</span>
 										<?php else: ?>
-											<?= $sent->recipients ?> recipient<?= 1 === $sent->recipients ? '' : 's' ?>, <?= $sent->delivered ?> delivered<?php if ([] !== $sent->expired): ?>, <span title="<?= $e(implode(', ', $sent->expired)) ?>"><?= \count($sent->expired) ?> expired and removed</span><?php endif ?>
+											<?= $sent->recipients ?> recipient<?= 1 === $sent->recipients ? '' : 's' ?> (<?= $e(implode(', ', $sent->locales)) ?>), <?= $sent->delivered ?> delivered<?php if ([] !== $sent->expired): ?>, <span title="<?= $e(implode(', ', $sent->expired)) ?>"><?= \count($sent->expired) ?> expired and removed</span><?php endif ?>
 										<?php endif ?>
 									</div>
 									<?php foreach ($sent->failures as $failure): ?>

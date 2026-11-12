@@ -6,6 +6,7 @@ namespace Raneomik\NettePWA\Push;
 
 use Minishlink\WebPush\MessageSentReport;
 use Nette\Utils\Json;
+use Raneomik\NettePWA\Bridge\Translator\LocaleResolver;
 use Raneomik\NettePWA\Push\Debug\SendLogger;
 
 final readonly class PushSender
@@ -22,29 +23,42 @@ final readonly class PushSender
 
     /**
      * @param string|list<string> $topics
+     * @param Notification|\Closure(string $notification): Notification $notification a closure is called once per locale of the listeners
      * @return list<MessageSentReport> failed deliveries
      */
-    public function send(string|array $topics, Notification $notification): array
+    public function send(string|array $topics, Notification|\Closure $notification): array
     {
         $start = hrtime(true);
         $topics = (array) $topics;
-        $subscriptions = [] === $topics ? [] : [...$this->storage->findByTopics($topics)];
 
-        $reports = [];
-        if ([] !== $subscriptions) { // none either while VAPID keys are empty: no client could subscribe
-            $webPush = $this->webPushFactory->create();
-            $payload = Json::encode($notification);
+        $webPush = null;
+        $logged = null;
+        $locales = [];
+        $recipients = 0;
+        // no listener either while VAPID keys are empty: no client could subscribe
+        foreach ([] === $topics ? [] : $this->storage->find($topics) as $locale => $subscriptions) {
+            $webPush ??= $this->webPushFactory->create();
+            $localized = $notification instanceof \Closure ? $notification((string) $locale) : $notification;
+            $logged ??= $localized;
+            $locales[] = $locale;
+            $payload = Json::encode($localized);
             foreach ($subscriptions as $subscription) {
                 $webPush->queueNotification($subscription, $payload);
-            }
-
-            foreach ($webPush->flush() as $report) {
-                $reports[] = $report;
+                ++$recipients;
             }
         }
 
-        // "nobody listens to these topics" is the first thing to know when nothing shows up
-        $this->logger?->record($topics, $notification, \count($subscriptions), $reports, (hrtime(true) - $start) / 1e6);
+        $reports = [];
+        foreach ($webPush?->flush() ?? [] as $report) {
+            $reports[] = $report;
+        }
+
+        if ($this->logger instanceof SendLogger) {
+            $logged ??= $notification instanceof \Closure
+                ? $notification(LocaleResolver::DefaultLocale)
+                : $notification;
+            $this->logger->record($topics, $logged, $recipients, $reports, (hrtime(true) - $start) / 1e6, $locales);
+        }
 
         $failures = [];
         foreach ($reports as $report) {

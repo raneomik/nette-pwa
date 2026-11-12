@@ -100,6 +100,15 @@ $failures = $pushSender->send("player/{$id}", new Notification('Bob joined', 'Ti
 $pushSender->send(['room/abc', 'room/def'], $notification); // each browser once
 ```
 
+A browser subscribes in the locale of its page (`<html lang>`, when `contributte/translation` knows it; `en` without a translator).
+Pass a closure to send each one its language: it is called once per locale of the listeners.
+
+```php
+$pushSender->send("player/{$id}", fn (string $locale) => new Notification(
+    $translator->translate('game.joined', ['name' => 'Bob'], locale: $locale),
+));
+```
+
 Expired subscriptions (404/410) are removed; the other failures are returned for you to log.
 
 ### Authorize topics
@@ -123,7 +132,7 @@ final class TopicAccess implements Raneomik\NettePWA\Push\TopicAuthorizer
 Table of the default storage (`nette/database`):
 
 ```sql
-CREATE TABLE push_subscriptions (endpoint TEXT NOT NULL, topic TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, createdAt INTEGER NOT NULL, PRIMARY KEY (endpoint, topic));
+CREATE TABLE push_subscriptions (endpoint TEXT NOT NULL, topic TEXT NOT NULL, locale varchar(64) NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, createdAt INTEGER NOT NULL, PRIMARY KEY (endpoint, topic));
 CREATE INDEX push_subscriptions_topic ON push_subscriptions (topic);
 ```
 

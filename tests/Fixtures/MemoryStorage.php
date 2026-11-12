@@ -10,22 +10,25 @@ use Raneomik\NettePWA\Push\SubscriptionStorage;
 final class MemoryStorage implements SubscriptionStorage
 {
     /**
-     * @var array<string, array{Subscription, list<string>}> endpoint => [subscription, topics]
+     * @var array<string, array{Subscription, list<string>, string}> endpoint => [subscription, topics, locale]
      */
     public array $rows = [];
 
-    public function save(Subscription $subscription, array $topics): void
+    public function save(Subscription $subscription, array $topics, string $locale = 'en'): void
     {
-        $this->rows[$subscription->getEndpoint()] = [$subscription, $topics];
+        $this->rows[$subscription->getEndpoint()] = [$subscription, $topics, $locale];
     }
 
-    public function findByTopics(array $topics): iterable
+    public function find(array $topics): iterable
     {
-        foreach ($this->rows as [$subscription, $rowTopics]) {
+        $byLocale = [];
+        foreach ($this->rows as [$subscription, $rowTopics, $locale]) {
             if ([] !== array_intersect($rowTopics, $topics)) {
-                yield $subscription;
+                $byLocale[$locale][] = $subscription;
             }
         }
+
+        return $byLocale;
     }
 
     public function remove(string $endpoint): void
@@ -39,9 +42,9 @@ final class MemoryStorage implements SubscriptionStorage
             return false;
         }
 
-        $topics = $this->rows[$oldEndpoint][1];
+        [,$topics, $locale] = $this->rows[$oldEndpoint];
         unset($this->rows[$oldEndpoint]);
-        $this->rows[$subscription->getEndpoint()] = [$subscription, $topics];
+        $this->rows[$subscription->getEndpoint()] = [$subscription, $topics, $locale];
 
         return true;
     }

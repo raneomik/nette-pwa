@@ -60,7 +60,13 @@ async function subscribe(push) {
         const subscription = await registration.pushManager.getSubscription()
             ?? await registration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: base64UrlToBytes(push.key)});
 
-        await send(push.subscribeUrl, 'POST', {subscription, topics: push.topics});
+        await send(
+            push.subscribeUrl,
+            'POST', {
+                subscription,
+                topics: push.topics,
+                locale: document.documentElement.lang
+            });
         push.buttons.forEach((button) => toggle(button, true));
     } catch (error) {
         console.error(error);
