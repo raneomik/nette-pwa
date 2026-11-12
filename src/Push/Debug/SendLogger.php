@@ -25,8 +25,9 @@ final class SendLogger
     /**
      * @param list<string> $topics
      * @param list<MessageSentReport> $reports
+     * @param list<string> $locales of the recipients; $notification is the one of the first
      */
-    public function record(array $topics, Notification $notification, int $recipients, array $reports, float $milliseconds): void
+    public function record(array $topics, Notification $notification, int $recipients, array $reports, float $milliseconds, array $locales = []): void
     {
         $expired = [];
         $failures = [];
@@ -50,6 +51,7 @@ final class SendLogger
             $expired,
             $failures,
             $milliseconds,
+            $locales,
         );
         $this->sent = \array_slice($this->sent, -self::Max);
     }

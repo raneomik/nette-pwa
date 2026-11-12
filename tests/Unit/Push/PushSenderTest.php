@@ -56,6 +56,42 @@ final class PushSenderTest extends TestCase
         Assert::same([self::Ok], $service->calls);
     }
 
+    public function testAClosureLocalizesOncePerLocaleOfTheListeners(): void
+    {
+        $this->storage->save(FakePushService::subscription('https://push.test/fr1'), ['room/a'], 'fr');
+        $this->storage->save(FakePushService::subscription('https://push.test/fr2'), ['room/a'], 'fr');
+
+        $service = new FakePushService();
+        $locales = [];
+        (new PushSender($service, $this->storage))->send('room/a', static function (string $locale) use (&$locales): Notification {
+            $locales[] = $locale;
+
+            return new Notification('fr' === $locale ? 'Salut' : 'Hi');
+        });
+
+        Assert::same(['en', 'fr'], $locales);
+        Assert::count(4, $service->calls);
+        Assert::same(1, $service->created, 'one flush for all the locales');
+    }
+
+    public function testTheLogKeepsTheNotificationOfTheFirstLocale(): void
+    {
+        $this->storage->save(FakePushService::subscription('https://push.test/fr'), ['room/c'], 'fr');
+        $this->storage->save(FakePushService::subscription('https://push.test/de'), ['room/c'], 'de');
+
+        $log = new SendLogger();
+        $sender = new PushSender(new FakePushService(), $this->storage, $log);
+        $localize = static fn (string $locale): Notification => new Notification($locale);
+        $sender->send('room/c', $localize);
+        $sender->send('room/nobody', $localize);
+
+        [$sent, $nobody] = $log->drain();
+        Assert::same('fr', $sent->notification->title);
+        Assert::same(['fr', 'de'], $sent->locales);
+        Assert::same('en', $nobody->notification->title, 'nobody: the default locale');
+        Assert::same([], $nobody->locales);
+    }
+
     public function testExpiredRemovedOtherFailuresReturned(): void
     {
         $service = new FakePushService([
@@ -98,6 +134,7 @@ final class PushSenderTest extends TestCase
         Assert::same(['room/a', 'room/b'], $first->topics);
         Assert::same('https://app.test/game/1', $first->notification->url);
         Assert::same(3, $first->recipients);
+        Assert::same(['en'], $first->locales);
         Assert::same(1, $first->delivered);
         Assert::same(['push.test'], $first->expired, 'hosts only: an endpoint is a capability URL');
         Assert::same([[

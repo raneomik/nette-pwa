@@ -15,13 +15,14 @@ use Nette\Utils\Json;
 use Nette\Utils\JsonException;
 use Raneomik\NettePWA\Action\Value\SubscriptionInput;
 use Raneomik\NettePWA\Action\Value\TopicsInput;
+use Raneomik\NettePWA\Bridge\Translator\LocaleResolver;
 use Raneomik\NettePWA\Push\PushServices;
 use Raneomik\NettePWA\Push\SubscriptionStorage;
 use Raneomik\NettePWA\Push\TopicAuthorizer;
 
 /**
  * /pwa/push/subscribe (route callback):
- * - POST   {"subscription": <PushSubscription.toJSON()>, "topics": ["player/42", ...]} from assets/push-client.js
+ * - POST   {"subscription": <PushSubscription.toJSON()>, "topics": ["player/42", ...], "locale": "fr"} from assets/push-client.js
  * - DELETE {"endpoint": "https://..."} from assets/push-client.js, when the visitor turns notifications off
  * - PUT    {"oldEndpoint": "https://...", "subscription": <...>} from assets/sw.js, when the browser rotates it
  *
@@ -37,6 +38,7 @@ final readonly class SubscribeAction
         private TopicAuthorizer $authorizer,
         private PushServices $pushServices,
         private SubscriptionStorage $storage,
+        private LocaleResolver $localeResolver,
     ) {
     }
 
@@ -77,7 +79,15 @@ final readonly class SubscribeAction
             );
         }
 
-        $this->storage->save($subscription, $topics->values);
+        $this->storage->save(
+            $subscription,
+            $topics->values,
+            $this->localeResolver->getLocale(
+                is_string($locale = $data['locale'] ?? null)
+                    ? $locale
+                    : null
+            ),
+        );
 
         return new JsonResponse($topics);
     }

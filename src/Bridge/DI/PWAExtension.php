@@ -16,6 +16,7 @@ use Raneomik\NettePWA\Action\ServiceWorkerAction;
 use Raneomik\NettePWA\Action\SubscribeAction;
 use Raneomik\NettePWA\Bridge\Latte\PWALatteExtension;
 use Raneomik\NettePWA\Bridge\Tracy\PWAPanel;
+use Raneomik\NettePWA\Bridge\Translator\LocaleResolver;
 use Raneomik\NettePWA\Manifest\ManifestInspector;
 use Raneomik\NettePWA\Manifest\ManifestProvider;
 use Raneomik\NettePWA\Manifest\Value\Display;
@@ -139,6 +140,9 @@ final class PWAExtension extends Nette\DI\CompilerExtension
                 'streamFactory' => new Reference($this->prefix('httpClient')),
             ]);
 
+        // autowired: the app's translator, null without contributte/translation
+        $builder->addDefinition($this->prefix('localeResolver'))
+            ->setCreator(LocaleResolver::class);
         $builder->addDefinition($this->prefix('pushServices'))
             ->setCreator(PushServices::class, [$push->pushServices]);
         $builder->addDefinition($this->prefix('sender'))

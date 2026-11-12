@@ -15,6 +15,7 @@ final readonly class SentPush
      * @param list<string> $topics
      * @param list<string> $expired push service hosts of the removed subscriptions
      * @param list<array{service: string, status: ?int, reason: string}> $failures
+     * @param list<string> $locales of the recipients; $notification is the one of the first
      */
     public function __construct(
         public array $topics,
@@ -24,6 +25,7 @@ final readonly class SentPush
         public array $expired,
         public array $failures,
         public float $milliseconds,
+        public array $locales = [],
     ) {
     }
 }

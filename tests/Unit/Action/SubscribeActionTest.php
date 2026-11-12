@@ -6,15 +6,20 @@ namespace Tests\Raneomik\NettePWA\Unit\Action;
 
 require \dirname(__DIR__, 2) . '/bootstrap.php';
 
+use Contributte\Translation\FallbackResolver;
+use Contributte\Translation\LocaleResolver as ContributteLocaleResolver;
+use Contributte\Translation\Translator;
 use Minishlink\WebPush\Subscription;
 use Nette\Application\BadRequestException;
 use Nette\Application\Response;
 use Nette\Application\Responses\JsonResponse;
 use Nette\Application\Responses\VoidResponse;
+use Nette\DI\Container;
 use Nette\Http\Request;
 use Nette\Http\UrlScript;
 use Nette\Utils\Json;
 use Raneomik\NettePWA\Action\SubscribeAction;
+use Raneomik\NettePWA\Bridge\Translator\LocaleResolver;
 use Raneomik\NettePWA\Push\PushServices;
 use Tester\Assert;
 use Tester\TestCase;
@@ -30,9 +35,12 @@ final class SubscribeActionTest extends TestCase
 
     private MemoryStorage $storage;
 
+    private LocaleResolver $localeResolver;
+
     protected function setUp(): void
     {
         $this->storage = new MemoryStorage();
+        $this->localeResolver = new LocaleResolver();
     }
 
     public function testStoresTheAllowedTopicsOnly(): void
@@ -50,6 +58,26 @@ final class SubscribeActionTest extends TestCase
         Assert::same(['room/a'], $this->storage->rows[self::Endpoint][1]);
     }
 
+    public function testStoresTheLocaleOfThePageWhenTheTranslatorKnowsIt(): void
+    {
+        $translator = new Translator(new ContributteLocaleResolver(new Container()), new FallbackResolver(), 'cs');
+        $translator->setLocalesWhitelist(['cs', 'fr']);
+
+        $this->localeResolver = new LocaleResolver($translator);
+        $body = Json::decode($this->body('room/a'), forceArrays: true);
+        \assert(\is_array($body));
+
+        $this->action('POST', Json::encode([
+            'locale' => 'fr',
+        ] + $body))();
+        Assert::same('fr', $this->storage->rows[self::Endpoint][2]);
+
+        $this->action('POST', Json::encode([
+            'locale' => ['fr'],
+        ] + $body))();
+        Assert::same('cs', $this->storage->rows[self::Endpoint][2], 'not a string: what the translator resolves');
+    }
+
     public function testAcceptsTheLimits(): void
     {
         $this->action('POST', $this->body([...$this->roomTopics(19), $long = 'room/' . str_repeat('a', 250)]))();
@@ -62,7 +90,7 @@ final class SubscribeActionTest extends TestCase
     {
         $this->action('POST', $this->body('room/a'))();
 
-        Assert::same(['room/a'], $topics = $this->storage->rows[self::Endpoint][1]);
+        Assert::same(['room/a'], $this->storage->rows[self::Endpoint][1]);
     }
 
     /**
@@ -189,6 +217,7 @@ final class SubscribeActionTest extends TestCase
             new PrefixAuthorizer('room/'),
             new PushServices(),
             $this->storage,
+            $this->localeResolver,
         );
     }
 

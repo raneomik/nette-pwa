@@ -16,13 +16,13 @@ interface SubscriptionStorage
      *
      * @param non-empty-list<string> $topics
      */
-    public function save(Subscription $subscription, array $topics): void;
+    public function save(Subscription $subscription, array $topics, string $locale): void;
 
     /**
      * @param non-empty-list<string> $topics
-     * @return iterable<Subscription> each endpoint once, even if it listens to several of them
+     * @return iterable<string, list<Subscription>> locale => its subscriptions; each endpoint once, even if it listens to several topics
      */
-    public function findByTopics(array $topics): iterable;
+    public function find(array $topics): iterable;
 
     public function remove(string $endpoint): void;
 

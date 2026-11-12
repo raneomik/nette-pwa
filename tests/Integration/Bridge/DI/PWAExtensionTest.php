@@ -20,6 +20,7 @@ use Raneomik\NettePWA\Action\ManifestAction;
 use Raneomik\NettePWA\Action\ServiceWorkerAction;
 use Raneomik\NettePWA\Action\SubscribeAction;
 use Raneomik\NettePWA\Bridge\Tracy\PWAPanel;
+use Raneomik\NettePWA\Bridge\Translator\LocaleResolver;
 use Raneomik\NettePWA\Manifest\ManifestInspector;
 use Raneomik\NettePWA\Manifest\ManifestProvider;
 use Raneomik\NettePWA\Push\Debug\SendLogger;
@@ -176,6 +177,22 @@ final class PWAExtensionTest extends TestCase
         $sender = $container->getByType(PushSender::class);
         Assert::same([], $sender->send(['room/nobody'], new Notification('Hi')));
         Assert::same([], $sender->send([], new Notification('Hi')));
+    }
+
+    public function testTheLocaleOfASubscriptionComesFromTheAppTranslator(): void
+    {
+        $resolver = ContainerFactory::create(self::Push, self::Router, self::Authorizer)->getByType(LocaleResolver::class);
+        Assert::same('en', $resolver->getLocale('fr'), 'no translator: english only');
+
+        // registered after "pwa", as an app may do
+        $resolver = ContainerFactory::create(self::Push, self::Router, self::Authorizer, <<<'NEON'
+            extensions:
+                translation: Contributte\Translation\DI\TranslationExtension
+            translation:
+                locales: {whitelist: [cs, fr], default: cs}
+            NEON)->getByType(LocaleResolver::class);
+        Assert::same('fr', $resolver->getLocale('fr'));
+        Assert::same('cs', $resolver->getLocale('de'));
     }
 
     public function testSubscribePathIsTheSameForTheRouteAndTheMeta(): void

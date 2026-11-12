@@ -21,14 +21,15 @@ final readonly class DatabaseStorage implements SubscriptionStorage
     ) {
     }
 
-    public function save(Subscription $subscription, array $topics): void
+    public function save(Subscription $subscription, array $topics, string $locale): void
     {
         $now = time();
-        $this->database->transaction(function () use ($subscription, $topics, $now): void {
+        $this->database->transaction(function () use ($subscription, $topics, $locale, $now): void {
             $this->remove($subscription->getEndpoint());
             $this->database->query('INSERT INTO ?name', $this->table, array_map(static fn (string $topic): array => [
                 'endpoint' => $subscription->getEndpoint(),
                 'topic' => $topic,
+                'locale' => $locale,
                 'p256dh' => $subscription->getPublicKey(),
                 'auth' => $subscription->getAuthToken(),
                 'createdAt' => $now,
@@ -36,15 +37,18 @@ final readonly class DatabaseStorage implements SubscriptionStorage
         });
     }
 
-    public function findByTopics(array $topics): iterable
+    public function find(array $topics): iterable
     {
         $rows = $this->database->table($this->table)
-            ->select('endpoint, p256dh, auth')
+            ->select('endpoint, p256dh, auth, locale')
             ->where('topic', $topics)
-            ->group('endpoint, p256dh, auth');
+            ->group('endpoint, p256dh, auth, locale');
+        $byLocale = [];
         foreach ($rows as $row) {
-            yield new Subscription((string) $row['endpoint'], (string) $row['p256dh'], (string) $row['auth']);
+            $byLocale[$row['locale']][] = new Subscription((string) $row['endpoint'], (string) $row['p256dh'], (string) $row['auth']);
         }
+
+        return $byLocale;
     }
 
     public function remove(string $endpoint): void

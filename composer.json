@@ -20,6 +20,7 @@
     "nette/utils": "^4.0"
   },
   "require-dev": {
+    "contributte/translation": "^2.0",
     "infection/infection": "^0.35.8",
     "latte/latte": "^3.0",
     "minishlink/web-push": "^11.0",
@@ -43,6 +44,7 @@
     "nette/database": "Default subscription storage",
     "nette/assets": "Versioned icon URLs in the manifest (src: 'img:icon')",
     "latte/latte": "{pwaHead()} function",
+    "contributte/translation": "push: a subscription keeps the locale of its page, to send each browser its language",
     "tracy/tracy": "PWA debug panel: manifest checks, service worker, pushes sent"
   },
   "autoload": {

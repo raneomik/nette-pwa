@@ -24,6 +24,7 @@ the web app manifest written in NEON, a service worker, and Web Push notificatio
 | `nette/assets` | versioned icon URLs (`src: 'img:icon'`) |
 | `minishlink/web-push`, `symfony/http-client`, `nyholm/psr7` | Web Push (`ext-gmp` strongly advised) |
 | `nette/database` | default subscription storage |
+| `contributte/translation` | a subscription keeps the locale of its page |
 | `tracy/tracy` | debug panel |
 
 ## Getting started
@@ -56,7 +57,7 @@ Link it from your layout:
 </head>
 ```
 
-The manifest is now served at `/manifest.webmanifest`, the service worker at `/sw.js`.
+The manifest is now served at `/manifest.webmanifest` & the service worker at `/sw.js`.
 
 ### Enable Web Push
 
@@ -83,8 +84,15 @@ Then:
 <button type="button" data-pwa-push="player/{$user->id} room/{$room}" data-pwa-on="🔔 On">🔔 Notify me</button>
 ```
 
+*quickstart on dev :*
 ```js
 import '../vendor/raneomik/nette-pwa/assets/push-client.js';
+```
+
+*prefer copy-paste-adapt :*
+
+```shell
+cp vendor/raneomik/nette-pwa/assets/push-client.js assets/js/
 ```
 
 The button is a toggle: clicked again, it turns notifications off (`aria-pressed="true"` while on).
@@ -98,6 +106,16 @@ use Raneomik\NettePWA\Push\Notification;
 
 $failures = $pushSender->send("player/{$id}", new Notification('Bob joined', 'Time to play!', url: $link));
 $pushSender->send(['room/abc', 'room/def'], $notification); // each browser once
+```
+
+A browser subscribes in the locale of its page: `<html lang>` when `contributte/translation` knows it, the translator's
+current locale otherwise, `en` without a translator.
+Pass a closure to send each one in its language: it is called once per locale of the listeners.
+
+```php
+$pushSender->send("player/{$id}", fn (string $locale) => new Notification(
+    $translator->translate('game.joined', ['name' => 'Bob'], locale: $locale),
+));
 ```
 
 Expired subscriptions (404/410) are removed; the other failures are returned for you to log.
@@ -123,7 +141,7 @@ final class TopicAccess implements Raneomik\NettePWA\Push\TopicAuthorizer
 Table of the default storage (`nette/database`):
 
 ```sql
-CREATE TABLE push_subscriptions (endpoint TEXT NOT NULL, topic TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, createdAt INTEGER NOT NULL, PRIMARY KEY (endpoint, topic));
+CREATE TABLE push_subscriptions (endpoint TEXT NOT NULL, topic TEXT NOT NULL, locale varchar(64) NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, createdAt INTEGER NOT NULL, PRIMARY KEY (endpoint, topic));
 CREATE INDEX push_subscriptions_topic ON push_subscriptions (topic);
 ```
 
@@ -176,15 +194,16 @@ pwa:
 
 ### Routes
 
-Prepended to the app's `RouteList`, served by PHP with `Cache-Control: no-cache` + `ETag`.
+Prepended to the app's `RouteList`. The manifest and the service worker are served with `Cache-Control: no-cache` + `ETag`.
 
-| Route | Method | |
-|-------|--------|---|
-| `/manifest.webmanifest` | `GET` | |
-| `/sw.js` | `GET` | |
-| `/pwa/push/subscribe` | `POST` | subscribe to topics |
-| | `PUT` | subscription rotated by the browser: topics move to the new endpoint |
-| | `DELETE` | unsubscribe |
+<table>
+  <tr><th>Route</th><th>Method</th><th></th></tr>
+  <tr><td><code>/manifest.webmanifest</code></td><td><code>GET</code></td><td></td></tr>
+  <tr><td><code>/sw.js</code></td><td><code>GET</code></td><td></td></tr>
+  <tr><td rowspan="3"><code>/pwa/push/subscribe</code></td><td><code>POST</code></td><td>subscribe to topics</td></tr>
+  <tr><td><code>PUT</code></td><td>subscription rotated by the browser: topics move to the new endpoint</td></tr>
+  <tr><td><code>DELETE</code></td><td>unsubscribe</td></tr>
+</table>
 
 ### Latte
 
@@ -194,21 +213,25 @@ Prepended to the app's `RouteList`, served by PHP with `Cache-Control: no-cache`
 
 | Attribute | Value |
 |-----------|-------|
-| `data-pwa-push` | topics, space separated; the browser listens to those of all the buttons of the page |
+| `data-pwa-push` | topics, space separated; the browser listens to those of all the buttons of the page (20 at most, 255 characters each) |
 | `data-pwa-on` | label while on (default `🔔 Notifications on`) |
-| `data-pwa-blocked` | label when the permission is denied |
-| `data-pwa-error` | label when the subscription fails |
-| `data-pwa-install` | label on iOS outside the installed app |
+| `data-pwa-off` | label while off (default: the button's own text) |
+| `data-pwa-blocked` | label when the permission is denied (default `🔕 Notifications blocked`) |
+| `data-pwa-error` | label when the subscription fails (default `🔕 Notifications unavailable`) |
+| `data-pwa-install` | label on iOS outside the installed app (default `📲 Add to Home Screen to get notifications`) |
+
+The script sets `aria-pressed` (`true` while on) and `disabled` (blocked, error, install). Without VAPID key or browser
+support, the buttons are hidden.
 
 ### PHP
 
 | Service | |
 |---------|---|
 | `Manifest\ManifestProvider` | `->manifest`: typed, read-only `Manifest\Value\Manifest` (`Icon`, `Display` enum) |
-| `Push\PushSender` | `send(string\|array $topics, Notification $notification): array` of failures |
+| `Push\PushSender` | `send(string\|array $topics, Notification\|Closure $notification): array` of failures (`MessageSentReport`) |
 | `Push\Notification` | `title`, `body`, `url` (opened on click), `tag` (replaces a previous one, default: the url) |
 | `Push\TopicAuthorizer` | `isAllowed(string $topic): bool`, yours to implement |
-| `Push\SubscriptionStorage` | `save()`, `findByTopics()`, `remove()`, `replace()` |
+| `Push\SubscriptionStorage` | `save()`, `find()`, `remove()`, `replace()` |
 
 ```php
 $manifest = $manifestProvider->manifest;

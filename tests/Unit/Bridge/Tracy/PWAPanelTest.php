@@ -150,7 +150,7 @@ final class PWAPanelTest extends TestCase
         $html = $panel->getPanel();
 
         Assert::match('%A%</svg><span class="tracy-label"><span style="font-weight:bold">3</span>%A%>1</span>%A%', $tab, 'three sent, one with failures');
-        Assert::match('%A%class="pwa-push pwa-failed"%A%Bob joined%A%Your turn%A%room/a, opens https://example.com/game/1%A%2 recipients, 1 delivered%A%push.test 500:%A%', $html);
+        Assert::match('%A%class="pwa-push pwa-failed"%A%Bob joined%A%Your turn%A%room/a, opens https://example.com/game/1%A%2 recipients (en), 1 delivered%A%push.test 500:%A%', $html);
         Assert::match('%A%Nobody%A%room/&lt;b&gt;%A%title="no subscription for these topics">0 recipients<%A%', $html);
         Assert::notContains('https://push.test/down', $html, 'endpoints are never shown');
         Assert::same([], $log->drain(), 'drained: the next request starts empty (worker mode)');
